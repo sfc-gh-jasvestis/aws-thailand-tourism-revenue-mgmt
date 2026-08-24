@@ -6,6 +6,46 @@
 USE DATABASE TOURISM_REVENUE;
 USE SCHEMA APP;
 
+-- ==================== AMAZON S3 ====================
+-- Storage integration for S3 landing zone (OTA feeds, flight data)
+CREATE OR REPLACE STORAGE INTEGRATION aws_thailand_tourism_revenue_mgmt_S3_INT
+  TYPE = EXTERNAL_STAGE
+  STORAGE_PROVIDER = 'S3'
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::018437500440:role/snowflake-sea-demos-s3'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/');
+
+-- External stage for data landing
+CREATE OR REPLACE STAGE RAW.LANDING_STAGE
+  STORAGE_INTEGRATION = aws_thailand_tourism_revenue_mgmt_S3_INT
+  URL = 's3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/'
+  FILE_FORMAT = (TYPE = 'JSON' STRIP_OUTER_ARRAY = TRUE);
+
+-- ==================== AMAZON KINESIS (via S3 Firehose) ====================
+-- Snowpipe auto-ingest from Kinesis Data Firehose delivery stream
+-- Stream ARN: arn:aws:kinesis:ap-southeast-1:018437500440:stream/aws-thailand-tourism-revenue-mgmt-stream
+-- Firehose delivers to: s3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/realtime/
+
+CREATE OR REPLACE PIPE RAW.OTA_REALTIME_PIPE
+  AUTO_INGEST = TRUE
+  INTEGRATION = 'aws_thailand_tourism_revenue_mgmt_S3_INT'
+  COMMENT = 'Auto-ingest real-time OTA rate feeds from Kinesis via S3 Firehose'
+AS
+COPY INTO RAW.OTA_RATE_FEEDS (FEED_ID, PROPERTY_ID, OTA_NAME, STAY_DATE, ROOM_TYPE, RATE_THB, RATE_USD, AVAILABILITY_STATUS, SCRAPED_AT)
+FROM (
+  SELECT
+    $1:feed_id::VARCHAR,
+    $1:property_id::VARCHAR,
+    $1:ota_name::VARCHAR,
+    $1:stay_date::DATE,
+    $1:room_type::VARCHAR,
+    $1:rate_thb::FLOAT,
+    $1:rate_usd::FLOAT,
+    $1:availability_status::VARCHAR,
+    $1:scraped_at::TIMESTAMP
+  FROM @RAW.LANDING_STAGE/realtime/
+)
+FILE_FORMAT = (TYPE = 'JSON');
+
 -- ==================== AMAZON BEDROCK ====================
 -- Network rule for Bedrock API access
 CREATE OR REPLACE NETWORK RULE APP.BEDROCK_NETWORK_RULE
@@ -13,7 +53,7 @@ CREATE OR REPLACE NETWORK RULE APP.BEDROCK_NETWORK_RULE
   TYPE = HOST_PORT
   VALUE_LIST = ('bedrock-runtime.ap-southeast-1.amazonaws.com:443');
 
--- Secret for AWS credentials (replace with actual keys)
+-- Secret for AWS credentials (replace with actual keys before deployment)
 CREATE OR REPLACE SECRET APP.AWS_BEDROCK_SECRET
   TYPE = GENERIC_STRING
   SECRET_STRING = '{"aws_key_id":"YOUR_KEY","aws_secret_key":"YOUR_SECRET","region":"ap-southeast-1"}';
@@ -23,9 +63,9 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION aws_thailand_tourism_revenue_mgmt_
   ALLOWED_NETWORK_RULES = (TOURISM_REVENUE.APP.BEDROCK_NETWORK_RULE)
   ALLOWED_AUTHENTICATION_SECRETS = (TOURISM_REVENUE.APP.AWS_BEDROCK_SECRET)
   ENABLED = TRUE
-  COMMENT = 'Bedrock access for Revenue Management & Dynamic Pricing';
+  COMMENT = 'Bedrock access for revenue strategy narrative generation';
 
--- UDF to call Bedrock Claude
+-- UDF to call Bedrock Claude for revenue strategy recommendations
 CREATE OR REPLACE FUNCTION APP.BEDROCK_GENERATE(prompt VARCHAR)
   RETURNS VARCHAR
   LANGUAGE PYTHON
@@ -51,7 +91,7 @@ def invoke_bedrock(prompt):
         "messages": [{"role": "user", "content": prompt}]
     })
     response = client.invoke_model(
-        modelId='us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+        modelId='anthropic.claude-3-5-sonnet-20241022-v2:0',
         contentType='application/json',
         accept='application/json',
         body=body
@@ -61,6 +101,7 @@ def invoke_bedrock(prompt):
 $$;
 
 -- ==================== AMAZON SNS ====================
+-- Network rule for SNS notifications to revenue managers
 CREATE OR REPLACE NETWORK RULE APP.SNS_NETWORK_RULE
   MODE = EGRESS
   TYPE = HOST_PORT
@@ -70,20 +111,40 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION aws_thailand_tourism_revenue_mgmt_
   ALLOWED_NETWORK_RULES = (TOURISM_REVENUE.APP.SNS_NETWORK_RULE)
   ALLOWED_AUTHENTICATION_SECRETS = (TOURISM_REVENUE.APP.AWS_BEDROCK_SECRET)
   ENABLED = TRUE
-  COMMENT = 'SNS access for Revenue Management & Dynamic Pricing alerts';
+  COMMENT = 'SNS access for revenue alert notifications';
 
 -- SNS Topic ARN: arn:aws:sns:ap-southeast-1:018437500440:sea-demos-aws-thailand-tourism-revenue-mgmt
 
--- ==================== KINESIS / IOT CORE INGESTION ====================
--- Snowpipe from Kinesis Data Stream
--- Stream ARN: arn:aws:kinesis:ap-southeast-1:018437500440:stream/aws-thailand-tourism-revenue-mgmt-stream
+-- UDF to publish SNS alerts
+CREATE OR REPLACE FUNCTION APP.SNS_PUBLISH(topic_arn VARCHAR, subject VARCHAR, message VARCHAR)
+  RETURNS VARCHAR
+  LANGUAGE PYTHON
+  RUNTIME_VERSION = '3.11'
+  PACKAGES = ('boto3')
+  HANDLER = 'publish_sns'
+  EXTERNAL_ACCESS_INTEGRATIONS = (aws_thailand_tourism_revenue_mgmt_SNS_EAI)
+  SECRETS = ('aws_creds' = TOURISM_REVENUE.APP.AWS_BEDROCK_SECRET)
+AS $$
+import json, boto3, _snowflake
 
-CREATE OR REPLACE PIPE RAW.REALTIME_PIPE
-  AUTO_INGEST = TRUE
-  INTEGRATION = 'aws_thailand_tourism_revenue_mgmt_S3_INT'
-  COMMENT = 'Auto-ingest from Kinesis via S3 delivery stream'
-AS
-COPY INTO RAW.PROPERTIES
-FROM @RAW.LANDING_STAGE/realtime/
-FILE_FORMAT = (TYPE = 'JSON');
+def publish_sns(topic_arn, subject, message):
+    creds = json.loads(_snowflake.get_generic_secret_string('aws_creds'))
+    client = boto3.client(
+        'sns',
+        region_name=creds['region'],
+        aws_access_key_id=creds['aws_key_id'],
+        aws_secret_access_key=creds['aws_secret_key']
+    )
+    response = client.publish(
+        TopicArn=topic_arn,
+        Subject=subject,
+        Message=message
+    )
+    return json.dumps(response)
+$$;
 
+-- ==================== AMAZON QUICKSIGHT ====================
+-- QuickSight connects via Snowflake partner connector
+-- Dashboard: RevPAR Performance by Destination
+-- Dataset: CURATED.PROPERTY_REVPAR (Direct Query mode)
+-- Amazon Q enabled for natural language: "What's our Phuket RevPAR this month?"
