@@ -6,21 +6,20 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   sql?: string;
+  source?: string;
 }
 
 interface AskAIProps {
   title?: string;
   placeholder?: string;
   sampleQuestions: string[];
-  mode: 'sql' | 'advisor' | 'both';
-  onSubmit: (question: string, mode: 'sql' | 'advisor') => Promise<{ answer: string; sql?: string }>;
+  onSubmit: (question: string) => Promise<{ answer: string; sql?: string; source?: string }>;
 }
 
-export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, mode, onSubmit }: AskAIProps) {
+export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, onSubmit }: AskAIProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeMode, setActiveMode] = useState<'sql' | 'advisor'>(mode === 'both' ? 'sql' : mode);
 
   const handleSubmit = async (question?: string) => {
     const q = question || input;
@@ -31,8 +30,8 @@ export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, mode, on
     setLoading(true);
 
     try {
-      const result = await onSubmit(q, activeMode);
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer, sql: result.sql }]);
+      const result = await onSubmit(q);
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer, sql: result.sql, source: result.source }]);
     } catch (err) {
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Error: Unable to process your question.' }]);
     } finally {
@@ -44,33 +43,18 @@ export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, mode, on
     <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-3">
         <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-        {mode === 'both' && (
-          <div className="mt-2 flex gap-2">
-            <button
-              className={`rounded px-3 py-1 text-xs font-medium ${activeMode === 'sql' ? 'bg-snowflake-blue text-white' : 'bg-slate-100 text-slate-600'}`}
-              onClick={() => setActiveMode('sql')}
-            >
-              Ask the Data (SQL)
-            </button>
-            <button
-              className={`rounded px-3 py-1 text-xs font-medium ${activeMode === 'advisor' ? 'bg-snowflake-blue text-white' : 'bg-slate-100 text-slate-600'}`}
-              onClick={() => setActiveMode('advisor')}
-            >
-              Ask the Advisor (Strategy)
-            </button>
-          </div>
-        )}
+        <p className="mt-0.5 text-[11px] text-slate-400">Powered by Cortex Analyst (data queries) + Cortex Search &amp; Complete (strategy advice)</p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div>
             <p className="mb-3 text-sm text-slate-500">Try asking:</p>
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {sampleQuestions.map((q, i) => (
                 <button
                   key={i}
-                  className="block w-full rounded border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  className="rounded border border-slate-200 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 hover:border-blue-300 transition-colors"
                   onClick={() => handleSubmit(q)}
                 >
                   {q}
@@ -85,6 +69,9 @@ export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, mode, on
               <p className="whitespace-pre-wrap">{msg.content}</p>
               {msg.sql && (
                 <pre className="mt-2 rounded bg-slate-800 p-2 text-xs text-green-300 overflow-x-auto">{msg.sql}</pre>
+              )}
+              {msg.source && (
+                <p className="mt-1 text-[10px] text-slate-400 italic">Source: {msg.source}</p>
               )}
             </div>
           </div>
@@ -103,7 +90,7 @@ export function AskAI({ title = 'Ask AI', placeholder, sampleQuestions, mode, on
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-            placeholder={placeholder || `Ask a question (${activeMode === 'sql' ? 'SQL-based' : 'strategic advice'})...`}
+            placeholder={placeholder || 'Ask about revenue, demand, pricing, or strategy...'}
             className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-snowflake-blue focus:outline-none"
           />
           <button

@@ -1,17 +1,31 @@
 import snowflake from 'snowflake-sdk';
+import { readFileSync } from 'fs';
 
 let connection: any = null;
+
+function getToken(): string {
+  // SPCS injects token via file mount
+  try {
+    return readFileSync('/snowflake/session/token', 'utf-8').trim();
+  } catch {
+    return process.env.SNOWFLAKE_TOKEN || '';
+  }
+}
 
 export async function getConnection() {
   if (connection) return connection;
 
+  const host = process.env.SNOWFLAKE_HOST || process.env.HOST || '';
+  const account = process.env.SNOWFLAKE_ACCOUNT || host.replace('.snowflakecomputing.com', '') || '';
+
   connection = snowflake.createConnection({
-    account: process.env.SNOWFLAKE_ACCOUNT || process.env.HOST?.replace('.snowflakecomputing.com', '') || '',
-    database: process.env.DATABASE || '',
-    schema: process.env.SCHEMA || '',
-    warehouse: process.env.WAREHOUSE || '',
+    account,
+    host,
+    database: process.env.SNOWFLAKE_DATABASE || process.env.DATABASE || '',
+    schema: process.env.SNOWFLAKE_SCHEMA || process.env.SCHEMA || '',
+    warehouse: process.env.SNOWFLAKE_WAREHOUSE || process.env.WAREHOUSE || '',
     authenticator: 'OAUTH',
-    token: process.env.SNOWFLAKE_TOKEN || '',
+    token: getToken(),
   });
 
   return new Promise((resolve, reject) => {

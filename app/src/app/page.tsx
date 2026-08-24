@@ -7,6 +7,17 @@ import { Chart } from '@/components/Chart';
 import { DataTable } from '@/components/DataTable';
 import { AskAI } from '@/components/AskAI';
 import { ActionMemo } from '@/components/ActionMemo';
+import { CalendarHeatmap } from '@/components/CalendarHeatmap';
+import { RateShoppingGrid } from '@/components/RateShoppingGrid';
+import { ForecastChart } from '@/components/ForecastChart';
+import { AnomalyAlerts } from '@/components/AnomalyAlerts';
+import { ArchitectureDiagram } from '@/components/ArchitectureDiagram';
+import { DemandSignals } from '@/components/DemandSignals';
+import { PickupReport } from '@/components/PickupReport';
+import { WhatIfSimulator } from '@/components/WhatIfSimulator';
+import { CompSetPosition } from '@/components/CompSetPosition';
+import { EventCalendar } from '@/components/EventCalendar';
+import { DecisionLog } from '@/components/DecisionLog';
 
 interface DemoNarrative {
   title: string;
@@ -31,6 +42,42 @@ export default function HomePage() {
   }, []);
 
   const kpis = data?.kpis || {};
+
+  // Static anomalies (in production these would come from ML.ANOMALY_DETECTION)
+  const anomalies = [
+    {
+      SEVERITY: 'high' as const,
+      TITLE: 'Demand Surge — Phuket (India Market)',
+      DESCRIPTION: 'Direct flight capacity from Mumbai/Delhi to Phuket increased +30%. Google Flights search volume surged +24% WoW. Booking intent crossed 85th percentile.',
+      METRIC: 'DEMAND_INDEX',
+      VALUE: '892 (+24% WoW)',
+      ACTION: 'Recommend +8-12% BAR increase for Phuket Luxury properties effective immediately',
+    },
+    {
+      SEVERITY: 'medium' as const,
+      TITLE: 'Rate Parity Violation — Koh Samui',
+      DESCRIPTION: '12 properties showing >10% rate disparity vs OTA channels. Direct channel significantly underpriced vs Booking.com and Agoda.',
+      METRIC: 'RATE_DISPARITY',
+      VALUE: '12 properties, avg -14% vs OTA',
+      ACTION: 'Review channel manager sync for Koh Samui cluster — potential mapping error',
+    },
+    {
+      SEVERITY: 'medium' as const,
+      TITLE: 'RevPAR Underperformance — 8 Properties Below Index 85',
+      DESCRIPTION: '8 properties across Chiang Mai and Koh Samui consistently underperforming comp set by 15%+. Combination of low occupancy and conservative pricing.',
+      METRIC: 'REVPAR_INDEX',
+      VALUE: '8 properties, avg index 79.4',
+      ACTION: 'Initiate rate strategy review with cluster GMs — consider repositioning or promotional packages',
+    },
+    {
+      SEVERITY: 'low' as const,
+      TITLE: 'Booking Pace Slowdown — Chiang Mai',
+      DESCRIPTION: 'Pace index dropped below 90 STLY for 5 consecutive days. Low season pattern but starting 2 weeks earlier than historical norm.',
+      METRIC: 'PACE_INDEX',
+      VALUE: '88.1 (target: 95+)',
+      ACTION: 'Consider promotional rate for Chiang Mai midweek stays (Tue-Thu)',
+    },
+  ];
 
   // Tab 1: Revenue Cockpit
   const revenueCockpit = (
@@ -63,6 +110,7 @@ export default function HomePage() {
           trend={{ direction: kpis.AVG_INDEX >= 100 ? 'up' : 'down', value: `${kpis.AVG_INDEX >= 100 ? 'Above' : 'Below'} market` }}
         />
       </div>
+      <AnomalyAlerts anomalies={anomalies} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Chart
           data={data?.revparTrend || []}
@@ -73,15 +121,19 @@ export default function HomePage() {
         />
         <Chart
           data={data?.destinations || []}
-          type="bar"
+          type="dual-axis"
           xKey="DESTINATION"
           yKeys={[
-            { key: 'AVG_REVPAR', name: 'RevPAR (฿)', color: '#29B5E8' },
-            { key: 'AVG_OCC', name: 'Occupancy %', color: '#10B981' },
+            { key: 'AVG_REVPAR', name: 'RevPAR (฿)', color: '#29B5E8', yAxisId: 'left' },
+            { key: 'AVG_OCC', name: 'Occupancy %', color: '#10B981', yAxisId: 'right', type: 'line' },
           ]}
           title="Destination Performance"
+          leftAxisLabel="RevPAR (฿)"
+          rightAxisLabel="Occupancy %"
         />
       </div>
+      <CalendarHeatmap data={data?.occupancyCalendar || []} />
+      <CompSetPosition />
       <DataTable
         columns={[
           { key: 'PROPERTY_NAME', header: 'Property' },
@@ -112,24 +164,27 @@ export default function HomePage() {
           />
         ))}
       </div>
-      <Chart
-        data={data?.demandByMarket || []}
-        type="bar"
-        xKey="SOURCE_MARKET"
-        yKeys={[
-          { key: 'AVG_DEMAND', name: 'Demand Index', color: '#29B5E8' },
-          { key: 'AVG_INTENT', name: 'Booking Intent', color: '#FF6B35' },
-        ]}
-        title="Demand by Source Market — Last 14 Days"
-        height={350}
+      <ForecastChart
+        data={data?.paceTrend || []}
+        title="Booking Pace — Actual vs ML.FORECAST vs STLY"
+        yLabel="Pace Index"
       />
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <h3 className="text-sm font-bold text-amber-800">ML.FORECAST Insight</h3>
-        <p className="mt-1 text-sm text-amber-700">
-          Demand surge predicted for Phuket in the next 30 days (+23% vs baseline).
-          Chinese source market driving 45% of the increase. Recommend pre-emptive rate increase of 8-12% for Luxury segment.
-        </p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Chart
+          data={data?.demandByMarket || []}
+          type="bar"
+          xKey="SOURCE_MARKET"
+          yKeys={[
+            { key: 'AVG_DEMAND', name: 'Demand Index', color: '#29B5E8' },
+            { key: 'AVG_INTENT', name: 'Booking Intent', color: '#FF6B35' },
+          ]}
+          title="Demand by Source Market — Last 14 Days"
+          height={300}
+        />
+        <DemandSignals data={data?.demandSignals || []} />
       </div>
+      <EventCalendar />
+      <PickupReport />
     </div>
   );
 
@@ -146,74 +201,79 @@ export default function HomePage() {
           />
         ))}
       </div>
-      <Chart
-        data={data?.ratePosition || []}
-        type="pie"
-        xKey="RATE_POSITION"
-        yKeys={[{ key: 'PROPERTY_COUNT', name: 'Properties' }]}
-        title="Rate Position vs OTA Market (Next 14 Days)"
-        height={300}
-      />
-      <ActionMemo
-        persona={{ name: 'Siriporn Chaiyaporn', role: 'VP Revenue & Distribution' }}
-        context={{ properties: 120, underpriced: data?.ratePosition?.find((r: any) => r.RATE_POSITION === 'UNDERPRICED')?.PROPERTY_COUNT || 0 }}
-        onGenerate={async () => ({
-          subject: 'Revenue Optimization — Rate Adjustment Recommendations',
-          body: `${data?.ratePosition?.find((r: any) => r.RATE_POSITION === 'UNDERPRICED')?.PROPERTY_COUNT || 34} properties are currently priced below OTA market by 10%+. Recommend immediate BAR increase for Phuket Luxury segment (demand surge detected). EventBridge trigger will auto-push approved rates to channel managers within 2-hour cycle.`,
-          urgency: 'HIGH',
-          actions: [
-            'Review 34 underpriced properties in Phuket & Koh Samui',
-            'Approve +8-12% rate increase for Luxury segment',
-            'Monitor booking pace post-adjustment (24h)',
-          ],
-        })}
-      />
+      <WhatIfSimulator />
+      <RateShoppingGrid data={data?.rateShopping || []} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Chart
+          data={data?.ratePosition || []}
+          type="pie"
+          xKey="RATE_POSITION"
+          yKeys={[{ key: 'PROPERTY_COUNT', name: 'Properties' }]}
+          title="Rate Position Distribution (Next 14 Days)"
+          height={280}
+        />
+        <ActionMemo
+          persona={{ name: 'Siriporn Chaiyaporn', role: 'VP Revenue & Distribution' }}
+          context={{ properties: 120, underpriced: data?.ratePosition?.find((r: any) => r.RATE_POSITION === 'UNDERPRICED')?.PROPERTY_COUNT || 0 }}
+          onGenerate={async () => ({
+            subject: 'Revenue Optimization — Rate Adjustment Recommendations',
+            body: `${data?.ratePosition?.find((r: any) => r.RATE_POSITION === 'UNDERPRICED')?.PROPERTY_COUNT || 34} properties are currently priced below OTA market by 10%+. Recommend immediate BAR increase for Phuket Luxury segment (demand surge detected). EventBridge trigger will auto-push approved rates to channel managers within 2-hour cycle.`,
+            urgency: 'HIGH',
+            actions: [
+              'Review 34 underpriced properties in Phuket & Koh Samui',
+              'Approve +8-12% rate increase for Luxury segment',
+              'Monitor booking pace post-adjustment (24h)',
+            ],
+          })}
+        />
+      </div>
     </div>
   );
 
   // Tab 4: Ask AI (Cortex Agent)
   const askAiTab = (
-    <div className="h-[600px]">
+    <div className="space-y-6">
+      <div className="h-[500px]">
       <AskAI
         title="Revenue Intelligence Agent"
-        placeholder="Ask about RevPAR, demand forecasts, pricing, or competitive positioning..."
+        placeholder="Ask about RevPAR, demand forecasts, pricing, or strategy..."
         sampleQuestions={[
           "What's our portfolio RevPAR vs competitive set this month?",
           "Which properties should increase rates this week?",
-          "Show me the demand forecast for Phuket from Chinese tourists",
+          "Show me the demand forecast for Phuket next 30 days",
           "What's the booking pace for Koh Samui vs last year?",
-          "Which destinations are underperforming and why?",
+          "How should we respond to the Chinese demand surge?",
+          "What rate parity violations exist across OTA channels?",
+          "Recommend a pricing strategy for low-occupancy properties",
+          "Which properties have anomalous booking patterns?",
         ]}
-        mode="both"
-        onSubmit={async (question, mode) => {
+        onSubmit={async (question) => {
           try {
             const res = await fetch('/api/ask', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ question, mode }),
+              body: JSON.stringify({ question }),
             });
             const result = await res.json();
-            return { answer: result.answer, sql: result.sql };
+            return { answer: result.answer, sql: result.sql, source: result.source };
           } catch {
             return {
               answer: `[Demo Mode] Response to: "${question}". Connect to Snowflake for live Cortex Agent responses.`,
-              sql: mode === 'sql' ? 'SELECT * FROM CURATED.PROPERTY_REVPAR LIMIT 10;' : undefined,
             };
           }
         }}
       />
+      </div>
+      <DecisionLog />
     </div>
   );
 
   // Tab 5: Architecture
   const architectureTab = (
     <div className="space-y-6">
+      <ArchitectureDiagram />
       <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-bold text-slate-900">Architecture</h2>
-        <p className="mb-4 text-sm text-slate-600">
-          Dynamic pricing intelligence for 120 Thai resort properties. OTA rate feeds stream via Kinesis,
-          ML.FORECAST predicts demand by source market, and EventBridge triggers automated rate adjustments.
-        </p>
+        <h2 className="mb-4 text-lg font-bold text-slate-900">Technical Components</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="rounded border border-blue-200 bg-blue-50 p-4">
             <h3 className="text-sm font-bold text-blue-800">Snowflake</h3>
@@ -234,7 +294,7 @@ export default function HomePage() {
               <li>Amazon Kinesis — Real-time OTA rate feed ingestion (500K feeds)</li>
               <li>Amazon SageMaker — Demand forecasting model by source market</li>
               <li>Amazon EventBridge — Trigger automated rate adjustments</li>
-              <li>Amazon Bedrock (Claude) — Revenue strategy narratives</li>
+              <li>Amazon Bedrock — Strategy playbook generation (content indexed by Cortex Search)</li>
               <li>Amazon SNS — Alert revenue managers on pricing opportunities</li>
               <li>Amazon QuickSight + Q — RevPAR performance dashboard with NL queries</li>
             </ul>

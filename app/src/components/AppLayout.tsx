@@ -61,7 +61,6 @@ export function AppLayout({ title, subtitle, logo, tabs, narrative }: AppLayoutP
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-400">Powered by Snowflake + AWS</span>
             {!demoMode && (
               <button
                 onClick={() => setDemoMode(true)}
