@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 09_AWS_INTEGRATION.SQL — AWS services for Revenue Management & Dynamic Pricing
--- Account: 018437500440 | Region: us-west-2 (Oregon)
+-- Account: <YOUR_AWS_ACCOUNT_ID> | Region: us-west-2 (Oregon)
 -- Skip this script for Snowflake-only build
 -- ============================================================================
 USE DATABASE TOURISM_REVENUE;
@@ -11,18 +11,18 @@ USE SCHEMA APP;
 CREATE OR REPLACE STORAGE INTEGRATION aws_thailand_tourism_revenue_mgmt_S3_INT
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::018437500440:role/snowflake-sea-demos-s3'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/');
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:role/snowflake-sea-demos-s3'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://<YOUR_S3_BUCKET>/aws-thailand-tourism-revenue-mgmt/');
 
 -- External stage for data landing
 CREATE OR REPLACE STAGE RAW.LANDING_STAGE
   STORAGE_INTEGRATION = aws_thailand_tourism_revenue_mgmt_S3_INT
-  URL = 's3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/'
+  URL = 's3://<YOUR_S3_BUCKET>/aws-thailand-tourism-revenue-mgmt/'
   FILE_FORMAT = (TYPE = 'JSON' STRIP_OUTER_ARRAY = TRUE);
 
 -- ==================== AMAZON KINESIS (via S3 Firehose) ====================
--- Stream ARN: arn:aws:kinesis:us-west-2:018437500440:stream/aws-thailand-tourism-revenue-mgmt-stream
--- Firehose delivers to: s3://sea-aws-demos-018437500440/aws-thailand-tourism-revenue-mgmt/realtime/
+-- Stream ARN: arn:aws:kinesis:us-west-2:<YOUR_AWS_ACCOUNT_ID>:stream/aws-thailand-tourism-revenue-mgmt-stream
+-- Firehose delivers to: s3://<YOUR_S3_BUCKET>/aws-thailand-tourism-revenue-mgmt/realtime/
 
 CREATE OR REPLACE PIPE RAW.OTA_REALTIME_PIPE
   AUTO_INGEST = TRUE
@@ -115,7 +115,7 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION aws_thailand_tourism_revenue_mgmt_
   ENABLED = TRUE
   COMMENT = 'SNS access for revenue alert notifications (us-west-2)';
 
--- SNS Topic ARN: arn:aws:sns:us-west-2:018437500440:sea-demos-aws-thailand-tourism-revenue-mgmt
+-- SNS Topic ARN: arn:aws:sns:us-west-2:<YOUR_AWS_ACCOUNT_ID>:sea-demos-aws-thailand-tourism-revenue-mgmt
 
 -- UDF to publish SNS alerts
 CREATE OR REPLACE FUNCTION APP.SNS_PUBLISH(topic_arn VARCHAR, subject VARCHAR, message VARCHAR)
