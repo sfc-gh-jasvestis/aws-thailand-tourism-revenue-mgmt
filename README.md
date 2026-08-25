@@ -123,7 +123,7 @@ Industry research and Snowflake customer outcomes:
 - **AI-powered revenue management increases RevPAR by 5-15% through optimal pricing** — [McKinsey Travel](https://www.mckinsey.com/industries/travel-logistics-and-infrastructure/our-insights)
 - **Dynamic pricing algorithms can capture 2-4% additional revenue from demand surges** — [BCG Hospitality](https://www.bcg.com/industries/travel-tourism)
 - **Chinese tourists accounted for 35% of Thailand's pre-COVID tourism revenue** — [UNWTO](https://www.unwto.org/tourism-data)
-
+- **Wyndham Hotels** (Snowflake customer): unified 30+ brands on a single data platform, enabling real-time revenue optimization across 9,000+ properties -- [snowflake.com/customers/wyndham](https://www.snowflake.com/en/customers/all-customers/case-study/wyndham/)
 
 ## Key Demo Numbers
 
