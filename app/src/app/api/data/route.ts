@@ -75,18 +75,23 @@ export async function GET() {
 
     // Top properties needing attention (underperforming)
     const propertiesAtRisk = await executeQuery(`
-      SELECT
-        PROPERTY_NAME,
-        DESTINATION,
-        CATEGORY,
-        ROUND(AVG(REVPAR), 0) AS REVPAR,
-        ROUND(AVG(REVPAR_INDEX), 1) AS REVPAR_INDEX,
-        ROUND(AVG(OCCUPANCY) * 100, 1) AS OCCUPANCY
-      FROM CURATED.PROPERTY_REVPAR
-      WHERE REVENUE_DATE >= DATEADD('day', -7, CURRENT_DATE())
-      GROUP BY PROPERTY_NAME, DESTINATION, CATEGORY
-      HAVING AVG(REVPAR_INDEX) < 90
-      ORDER BY AVG(REVPAR_INDEX) ASC
+      -- REVPAR_INDEX is itself derived from an AVG() inside the dynamic table,
+      -- so repeating AVG(REVPAR_INDEX) in HAVING/ORDER BY nests aggregates and
+      -- fails to compile. Aggregate once, then filter on the alias.
+      SELECT * FROM (
+        SELECT
+          PROPERTY_NAME,
+          DESTINATION,
+          CATEGORY,
+          ROUND(AVG(REVPAR), 0) AS REVPAR,
+          ROUND(AVG(REVPAR_INDEX), 1) AS REVPAR_INDEX,
+          ROUND(AVG(OCCUPANCY) * 100, 1) AS OCCUPANCY
+        FROM CURATED.PROPERTY_REVPAR
+        WHERE REVENUE_DATE >= DATEADD('day', -7, CURRENT_DATE())
+        GROUP BY PROPERTY_NAME, DESTINATION, CATEGORY
+      )
+      WHERE REVPAR_INDEX < 90
+      ORDER BY REVPAR_INDEX ASC
       LIMIT 10
     `);
 
@@ -104,19 +109,20 @@ export async function GET() {
     const rateShopping = await executeQuery(`
       SELECT
         r.STAY_DATE::VARCHAR AS STAY_DATE,
-        p.PROPERTY_NAME,
-        ROUND(r.RECOMMENDED_RATE, 0) AS YOUR_RATE,
-        ROUND(r.OTA_AVG_RATE * 1.02, 0) AS BOOKING_COM,
-        ROUND(r.OTA_AVG_RATE * 0.98, 0) AS AGODA,
-        ROUND(r.OTA_AVG_RATE * 1.01, 0) AS EXPEDIA,
-        ROUND(r.RECOMMENDED_RATE * 0.95, 0) AS DIRECT,
-        ROUND(r.OTA_AVG_RATE, 0) AS COMP_AVG,
+        r.PROPERTY_NAME,
+        ROUND(r.OUR_BAR, 0) AS YOUR_RATE,
+        ROUND(r.AVG_OTA_RATE * 1.02, 0) AS BOOKING_COM,
+        ROUND(r.AVG_OTA_RATE * 0.98, 0) AS AGODA,
+        ROUND(r.AVG_OTA_RATE * 1.01, 0) AS EXPEDIA,
+        ROUND(r.OUR_BAR * 0.95, 0) AS DIRECT,
+        ROUND(r.AVG_OTA_RATE, 0) AS COMP_AVG,
         r.RATE_POSITION
+      -- RATE_RECOMMENDATIONS already carries PROPERTY_NAME, so no join needed.
+      -- Columns are OUR_BAR / AVG_OTA_RATE; the previous names did not exist.
       FROM CURATED.RATE_RECOMMENDATIONS r
-      JOIN RAW.PROPERTIES p ON r.PROPERTY_ID = p.PROPERTY_ID
       WHERE r.STAY_DATE >= CURRENT_DATE()
         AND r.STAY_DATE <= DATEADD('day', 7, CURRENT_DATE())
-      ORDER BY r.STAY_DATE, p.PROPERTY_NAME
+      ORDER BY r.STAY_DATE, r.PROPERTY_NAME
       LIMIT 12
     `);
 
