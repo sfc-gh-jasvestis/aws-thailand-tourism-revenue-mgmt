@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/snowflake';
 
+// Always hit Snowflake at request time. Without this Next.js prerenders the
+// route during `next build` - where SPCS env vars do not exist - and bakes a
+// static error response into the image.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   try {
     // Portfolio KPIs (last 30 days)
