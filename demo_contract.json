@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "repo": "aws-thailand-tourism-revenue-mgmt",
+  "operation": "on-demand",
+  "data_classification": "synthetic demonstration only; property-level aggregates, no guest data or guest identifiers, no real hotel, channel or competitor rates",
+  "grains": {
+    "RAW.PROPERTIES": "one row per hotel property",
+    "RAW.PROPERTY_DAILY": "one row per property per day (90 days)",
+    "RAW.CHANNEL_CONNECTIONS": "one row per property (distribution channel snapshot)",
+    "CURATED.PERFORMANCE_SUMMARY": "one row per property",
+    "CURATED.TREND_ANALYSIS": "one row per day",
+    "CURATED.DRIVER_SUMMARY": "one row per breach driver",
+    "CURATED.KPI_SUMMARY": "one row per KPI",
+    "ML.BREACH_RISK_SCORES": "one row per property (latest day)"
+  },
+  "metrics": {
+    "Bookings vs Budget": "100 * SUM(BOOKING_COUNT) / SUM(RAW.PROPERTIES.BUDGET_BOOKINGS_90D)",
+    "Bookings": "SUM(BOOKING_COUNT)",
+    "Room Occupancy": "100 * SUM(OCCUPIED_ROOMS) / SUM(AVAILABLE_ROOMS) over property-days",
+    "Average Daily Rate": "SUM(ROOM_REVENUE_THB) / SUM(OCCUPIED_ROOMS), THB",
+    "RevPAR": "SUM(ROOM_REVENUE_THB) / SUM(AVAILABLE_ROOMS), THB",
+    "Room Revenue": "SUM(ROOM_REVENUE_THB) / 1e6, M THB",
+    "Bookings Below Rate Floor": "100 * (SUM(BOOKING_COUNT) - SUM(AT_RATE_COUNT)) / SUM(BOOKING_COUNT)",
+    "Alert Confirmation Rate": "100 * SUM(BREACH_COUNT) / SUM(PARITY_ALERT_COUNT)",
+    "Rate Parity Alerts": "SUM(PARITY_ALERT_COUNT)",
+    "Confirmed Parity Breaches": "SUM(BREACH_COUNT)",
+    "Channel Cases Opened": "SUM(CASE_OPENED)",
+    "Rate-Loading Audit Compliance": "100 * SUM(AUDIT_COMPLETED) / SUM(AUDIT_DUE)",
+    "Properties Active": "COUNT(RAW.PROPERTIES)",
+    "Available Rooms": "SUM(RAW.PROPERTIES.AVAILABLE_ROOMS)",
+    "Channel Parity Audit Coverage": "100 * SUM(CHANNELS_AUDITED) / SUM(CHANNELS_CONNECTED)",
+    "Channel Audits Pending": "SUM(AUDITS_PENDING)",
+    "Average Rate Sync Lag": "AVG(SYNC_LAG_HOURS), hours",
+    "Open Rate Mismatches (property-day total)": "SUM(OPEN_MISMATCHES)"
+  },
+  "chart_bindings": {
+    "daily_bookings_alerts": [
+      "CURATED.TREND_ANALYSIS.METRIC_DATE",
+      "BOOKING_COUNT",
+      "PARITY_ALERT_COUNT"
+    ],
+    "alerts_by_driver": [
+      "CURATED.DRIVER_SUMMARY.BREACH_DRIVER",
+      "PARITY_ALERT_COUNT",
+      "BREACH_COUNT"
+    ],
+    "audit_vs_breaches": [
+      "CURATED.PERFORMANCE_SUMMARY.AUDIT_COMPLIANCE_PCT",
+      "BREACH_COUNT"
+    ],
+    "quicksight_breach_risk": [
+      "ENTITY_ID",
+      "MAX(BREACH_PROB_7D)"
+    ]
+  },
+  "freshness": "MAX(EVENT_DATE) is an observation watermark; requestedAt is not freshness",
+  "required_capabilities": {
+    "core_pipeline": "Curated KPIs reconcile to a RAW recomputation (run_core.py checks this on every build)",
+    "forecast_and_anomaly": "14-day FORECAST of new bookings; rate sync lag ANOMALY_DETECTION (train 75 days, detect last 15)",
+    "search": "Cortex Search SEARCH.PROPERTY_SOP_SEARCH over synthetic rate parity SOPs (one per property type and breach driver)",
+    "semantic_analytics": "Semantic view APP.REVENUE_MGMT_ANALYTICS and Cortex Agent APP.REVENUE_MGMT_AGENT using analyst + search tools",
+    "grounded_ai": "Agent answers return generated SQL and SOP citations; the action memo uses only KPI, property, breach-driver and risk rows",
+    "quicksight": "DIRECT_QUERY dashboard (properties, daily bookings and parity alerts, confirmed parity breaches by property, breach risk, rate-shop events loaded) through a read-only Snowflake service user",
+    "quicksight_q": "Amazon Q topic over the curated datasets for natural-language questions",
+    "aws_ingestion": "Amazon Data Firehose -> S3 -> Snowpipe AUTO_INGEST into RAW.LIVE_RATE_SHOPS",
+    "notifications": "APP.LIVE_RATE_SHOPS_ALERT logs new ALERT events to APP.ALERT_LOG and emails via SYSTEM$SEND_EMAIL; alert and tasks suspended between demos",
+    "orchestration": "Task graph APP.TASK_REFRESH_CURATED -> APP.TASK_RESCORE_RISK run on demand (EXECUTE TASK)",
+    "app_deployment": "SPCS service APP.TH_TOURISM_REVENUE_MGMT_APP; routes /api/data, /api/ask, /api/agent",
+    "breach_risk_model": "Snowflake ML CLASSIFICATION of P(confirmed rate parity breach in next 7 days) per property, evaluated on an out-of-time holdout; operational, not pricing advice"
+  },
+  "builds": {
+    "snowflake": {
+      "database": "THAILAND_TOURISM_REVENUE_MGMT_SNOWFLAKE",
+      "app_setting": "DEMO_PLATFORM=snowflake",
+      "memo": "Cortex AI_COMPLETE (claude-sonnet-4-5)",
+      "live_rate_shops": "APP.SIMULATE_RATE_SHOPS(n)"
+    },
+    "aws": {
+      "database": "THAILAND_TOURISM_REVENUE_MGMT_AWS",
+      "app_setting": "DEMO_PLATFORM=aws",
+      "memo": "Amazon Bedrock Claude Sonnet 4.5 via APP.BEDROCK_GENERATE",
+      "capabilities": "see required_capabilities",
+      "live_rate_shops": "Amazon Data Firehose -> S3 -> Snowpipe"
+    }
+  }
+}
